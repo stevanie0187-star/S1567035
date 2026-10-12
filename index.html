@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文字地下城</title>
+<style>
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #111827;
+  color: #f9fafb;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 20px 12px;
+  background: radial-gradient(circle at top, #26364e, #111827 70%);
+  min-height: 100vh;
+}
+main { max-width: 650px; margin: auto; }
+h1, .subtitle { text-align: center; }
+h1 { margin-bottom: 6px; }
+.subtitle { color: #9ca3af; margin-bottom: 20px; }
+.panel {
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 14px;
+  padding: 15px;
+  margin-bottom: 14px;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  text-align: center;
+}
+.stat {
+  background: #111827;
+  border-radius: 9px;
+  padding: 10px 4px;
+}
+.stat-label { display: block; color: #9ca3af; font-size: 12px; }
+.stat-value { font-size: 19px; font-weight: bold; }
+#map-wrap { overflow-x: auto; padding: 10px 0 16px; }
+#map {
+  display: grid;
+  width: max-content;
+  margin: auto;
+  gap: 3px;
+  user-select: none;
+}
+.tile {
+  display: grid;
+  place-items: center;
+  width: clamp(25px, 6vw, 38px);
+  height: clamp(25px, 6vw, 38px);
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: clamp(14px, 3.5vw, 20px);
+  font-weight: bold;
+}
+.wall { background: #64748b; color: white; }
+.floor { background: #263449; color: #64748b; }
+.player {
+  background: #4ade80;
+  color: #052e16;
+  animation: rainbowPlayer 2s linear infinite;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.35);
+}
+@keyframes rainbowPlayer {
+  0%   { background-color: #ff4d4d; color: #ffffff; }
+  16%  { background-color: #ff9f43; color: #1f2937; }
+  33%  { background-color: #ffe66d; color: #1f2937; }
+  50%  { background-color: #4ade80; color: #052e16; }
+  66%  { background-color: #38bdf8; color: #082f49; }
+  83%  { background-color: #c084fc; color: #3b0764; }
+  100% { background-color: #ff4d4d; color: #ffffff; }
+}
+.enemy { background: #be123c; color: white; }
+.exit { background: #a16207; color: #fef3c7; }
+.fountain {
+  background: #0e7490;
+  color: #cffafe;
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.45);
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 16px;
+  color: #d1d5db;
+  font-size: 13px;
+}
+.status {
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  line-height: 1.5;
+  padding: 10px;
+  background: #111827;
+  border-radius: 9px;
+}
+.win { color: #6ee7b7; background: #064e3b; }
+.lose { color: #fda4af; background: #4c0519; }
+.controls {
+  display: grid;
+  grid-template-columns: repeat(3, 64px);
+  grid-template-rows: repeat(2, 56px);
+  gap: 8px;
+  justify-content: center;
+  margin: 18px auto 10px;
+  touch-action: manipulation;
+}
+button {
+  cursor: pointer;
+  border-radius: 10px;
+  font-size: 22px;
+  font-weight: bold;
+  touch-action: manipulation;
+}
+.move-btn {
+  color: white;
+  background: #374151;
+  border: 1px solid #4b5563;
+}
+.move-btn:active { background: #059669; }
+.up { grid-column: 2; grid-row: 1; }
+.left { grid-column: 1; grid-row: 2; }
+.down { grid-column: 2; grid-row: 2; }
+.right { grid-column: 3; grid-row: 2; }
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 15px;
+}
+.action-btn {
+  padding: 11px 18px;
+  border: none;
+  background: #34d399;
+  color: #052e16;
+  font-size: 14px;
+}
+.secondary {
+  background: #374151;
+  color: white;
+  border: 1px solid #4b5563;
+}
+.help { color: #d1d5db; font-size: 13px; line-height: 1.8; }
+.help h2 { font-size: 16px; color: white; }
+@media (max-width: 380px) {
+  body { padding: 12px 6px; }
+  .panel { padding: 10px; }
+  #map { gap: 2px; }
+  .controls { grid-template-columns: repeat(3, 58px); }
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>⚔️ 文字地下城</h1>
+  <p class="subtitle">探索迷宮、擊敗敵人，找到出口！</p>
+
+  <section class="panel stats">
+    <div class="stat">
+      <span class="stat-label">樓層</span>
+      <span id="level" class="stat-value">1 / 3</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">生命值</span>
+      <span id="hp" class="stat-value">❤️❤️❤️</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">回合數</span>
+      <span id="turns" class="stat-value">0</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">擊敗敵人</span>
+      <span id="kills" class="stat-value">0</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div id="map-wrap">
+      <div id="map" role="grid" aria-label="地下城地圖"></div>
+    </div>
+    <div class="legend">
+      <span>🟩 @ 玩家</span>
+      <span>⬜ # 牆壁</span>
+      <span>🟥 E 敵人</span>
+      <span>🟨 出 出口</span>
+      <span>💧 H 治療泉水</span>
+      <span>⬛ . 地板</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div id="status" class="status" role="status" aria-live="polite">
+      冒險開始！使用方向鍵移動。
+    </div>
+
+    <div class="controls" aria-label="觸控方向控制">
+      <button class="move-btn up" data-dir="up" aria-label="向上">▲</button>
+      <button class="move-btn left" data-dir="left" aria-label="向左">◀</button>
+      <button class="move-btn down" data-dir="down" aria-label="向下">▼</button>
+      <button class="move-btn right" data-dir="right" aria-label="向右">▶</button>
+    </div>
+
+    <div class="actions">
+      <button id="restart" class="action-btn">↻ 重新開始</button>
+      <button id="wait" class="action-btn secondary">等待一回合</button>
+    </div>
+  </section>
+
+  <section class="panel help">
+    <h2>📜 遊戲規則</h2>
+    <p>• 使用 WASD 或方向鍵移動。</p>
+    <p>• 玩家不能穿過牆壁，撞牆不會消耗回合。</p>
+    <p>• 移動到敵人所在方向會攻擊敵人。</p>
+    <p>• 一般敵人相鄰時會攻擊；右側下方的特殊敵人只有實際碰到才會扣血。</p>
+    <p>• 每次有效行動後，敵人會移動或攻擊。</p>
+    <p>• 生命值歸零時遊戲結束。</p>
+    <p>• 地下城共有 3 層，抵達出口會前往下一層；第 3 層出口即為勝利。</p>
+    <p>• 每層敵人會增加，難度逐層提升。</p>
+    <p>• 💧 走到治療泉水 H 可將生命值恢復至目前上限（最多 3 格）；每層的泉水只能使用一次。</p>
+    <p>• 手機可使用畫面上的方向按鈕。</p>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+// 地圖符號：# 牆壁、. 地板、P 玩家、E 敵人、X 出口、H 治療泉水。
+const LEVELS = [
+  [
+    "###############",
+    "#PH...#.......#",
+    "#.##..#.###...#",
+    "#....E#...#...#",
+    "####..#.#.#.#.#",
+    "#.....#.#...#.#",
+    "#.#####.###.#.#",
+    "#.......E...#.#",
+    "#.#######.###.#",
+    "#.....E......X#",
+    "###############"
+  ],
+  [
+    "###############",
+    "#P...#........#",
+    "#.##.#.####...#",
+    "#...E#....#...#",
+    "####.#.#..#.#.#",
+    "#....E.#.....H#",
+    "#.#####.###.#.#",
+    "#.......E...#.#",
+    "#.#######.###.#",
+    "#..E.........X#",
+    "###############"
+  ],
+  [
+    "###############",
+    "#P....#.......#",
+    "#.##..#.###...#",
+    "#E...E#...#...#",
+    "####..#.#.#.#.#",
+    "#.....#.#...#H#",
+    "#.#####.###.#.#",
+    "#...E...E...#.#",
+    "#.#######.###.#",
+    "#E....E......X#",
+    "###############"
+  ]
+];
+const mapElement = document.getElementById("map");
+const hpElement = document.getElementById("hp");
+const levelElement = document.getElementById("level");
+const turnsElement = document.getElementById("turns");
+const killsElement = document.getElementById("kills");
+const statusElement = document.getElementById("status");
+
+const DIRECTIONS = {
+  up:    { x: 0, y: -1 },
+  down:  { x: 0, y: 1 },
+  left:  { x: -1, y: 0 },
+  right: { x: 1, y: 0 }
+};
+
+let walls, enemies, player, exit, fountains, currentMap;
+let hp, turns, kills, gameState, levelIndex;
+const MAX_HP = 3;
+
+// 載入指定樓層的地圖；生命值、回合數與擊殺數會保留。
+function loadLevel(index) {
+  levelIndex = index;
+  currentMap = LEVELS[levelIndex];
+  walls = new Set();
+  enemies = [];
+  fountains = new Set();
+  player = { x: 1, y: 1 };
+  exit = { x: 13, y: 9 };
+
+  for (let y = 0; y < currentMap.length; y++) {
+    for (let x = 0; x < currentMap[y].length; x++) {
+      const cell = currentMap[y][x];
+
+      if (cell === "#") {
+        walls.add(key(x, y));
+      } else if (cell === "P") {
+        player = { x, y };
+      } else if (cell === "E") {
+        // 每層右側下方的特殊敵人採「碰撞才傷害」模式。
+        enemies.push({ x, y, alive: true, contactOnly: x === 8 && y === 7 });
+      } else if (cell === "X") {
+        exit = { x, y };
+      } else if (cell === "H") {
+        fountains.add(key(x, y));
+      }
+    }
+  }
+}
+
+// 初始化整場遊戲。
+function initializeGame() {
+  hp = MAX_HP;
+  turns = 0;
+  kills = 0;
+  gameState = "playing";
+  loadLevel(0);
+  setStatus("冒險開始！探索第 1 層，尋找出口與治療泉水。");
+  render();
+}
+
+// 進入下一層；保留目前生命值、回合數與擊殺數。
+function advanceLevel() {
+  if (levelIndex >= LEVELS.length - 1) {
+    gameState = "won";
+    setStatus(
+      `🏆 通關成功！你完成了全部 3 層，用了 ${turns} 回合，擊敗 ${kills} 名敵人！`,
+      "win"
+    );
+    render();
+    return;
+  }
+
+  loadLevel(levelIndex + 1);
+  setStatus(`🌀 進入第 ${levelIndex + 1} 層！敵人變多了，繼續小心探索。`);
+  render();
+}
+
+// 將座標轉換成鍵值。
+function key(x, y) {
+  return `${x},${y}`;
+}
+
+// 判斷座標是否為牆壁。
+function isWall(x, y) {
+  return walls.has(key(x, y));
+}
+
+// 取得指定座標上的存活敵人。
+function enemyAt(x, y) {
+  return enemies.find(
+    enemy => enemy.alive && enemy.x === x && enemy.y === y
+  );
+}
+
+// 更新遊戲訊息。
+function setStatus(message, state = "") {
+  statusElement.textContent = message;
+  statusElement.className = "status";
+  if (state) statusElement.classList.add(state);
+}
+
+// 繪製地圖及狀態資訊。
+function render() {
+  mapElement.innerHTML = "";
+  mapElement.style.gridTemplateColumns =
+    `repeat(${currentMap[0].length}, auto)`;
+
+  for (let y = 0; y < currentMap.length; y++) {
+    for (let x = 0; x < currentMap[y].length; x++) {
+      const tile = document.createElement("div");
+      tile.className = "tile";
+      tile.setAttribute("role", "gridcell");
+
+      const enemy = enemyAt(x, y);
+
+      if (player.x === x && player.y === y) {
+        tile.classList.add("player");
+        tile.textContent = "@";
+        tile.setAttribute("aria-label", "玩家");
+      } else if (enemy) {
+        tile.classList.add("enemy");
+        tile.textContent = "E";
+        tile.setAttribute("aria-label", "敵人");
+      } else if (isWall(x, y)) {
+        tile.classList.add("wall");
+        tile.textContent = "#";
+        tile.setAttribute("aria-label", "牆壁");
+      } else if (x === exit.x && y === exit.y) {
+        tile.classList.add("exit");
+        tile.textContent = "出";
+        tile.setAttribute("aria-label", "出口");
+      } else if (fountains.has(key(x, y))) {
+        tile.classList.add("fountain");
+        tile.textContent = "H";
+        tile.setAttribute("aria-label", "治療泉水");
+      } else {
+        tile.classList.add("floor");
+        tile.textContent = ".";
+        tile.setAttribute("aria-label", "地板");
+      }
+
+      mapElement.appendChild(tile);
+    }
+  }
+
+  hpElement.textContent =
+    "❤️".repeat(hp) + "🖤".repeat(MAX_HP - hp);
+  levelElement.textContent = `${levelIndex + 1} / ${LEVELS.length}`;
+  turnsElement.textContent = String(turns);
+  killsElement.textContent = String(kills);
+}
+
+// 處理玩家移動與攻擊。
+function move(direction) {
+  if (gameState !== "playing") return;
+
+  const delta = DIRECTIONS[direction];
+  if (!delta) return;
+
+  const nx = player.x + delta.x;
+  const ny = player.y + delta.y;
+
+  // 撞牆時不移動，也不消耗回合。
+  if (isWall(nx, ny)) {
+    setStatus("🧱 前方是牆壁，換個方向吧！");
+    return;
+  }
+
+  // 碰到右側下方的特殊敵人會受傷；其他敵人仍可正常擊敗。
+  const enemy = enemyAt(nx, ny);
+  if (enemy) {
+    turns++;
+    if (enemy.contactOnly) {
+      hp--;
+      setStatus("💥 你碰到了右側敵人！生命值 -1。");
+      if (hp <= 0) {
+        hp = 0;
+        gameState = "lost";
+        setStatus("💀 生命值歸零，請重新開始！", "lose");
+        render();
+        return;
+      }
+    } else {
+      enemy.alive = false;
+      kills++;
+      setStatus("⚔️ 你擊敗了一名敵人！");
+    }
+    afterPlayerAction();
+    return;
+  }
+
+  // 移動到空地。
+  player.x = nx;
+  player.y = ny;
+  turns++;
+
+  // 踩到治療泉水：恢復至生命值上限，泉水使用後消失。
+  const fountainKey = key(player.x, player.y);
+  if (fountains.has(fountainKey)) {
+    const healed = MAX_HP - hp;
+    fountains.delete(fountainKey);
+    if (healed > 0) {
+      hp = MAX_HP;
+      setStatus(`💧 你喝下治療泉水，恢復 ${healed} 點生命值！`);
+    } else {
+      setStatus("💧 治療泉水讓你精神一振！你的生命值已滿。");
+    }
+  } else {
+    setStatus("你向前移動了一步。");
+  }
+
+  // 前兩層的出口會帶往下一層；第 3 層出口通關。
+  if (player.x === exit.x && player.y === exit.y) {
+    advanceLevel();
+    return;
+  }
+
+  afterPlayerAction();
+}
+
+// 等待一回合。
+function waitTurn() {
+  if (gameState !== "playing") return;
+  turns++;
+  setStatus("你停下腳步，觀察四周。");
+  afterPlayerAction();
+}
+
+// 玩家行動後，輪到敵人行動。
+function afterPlayerAction() {
+  if (gameState !== "playing") {
+    render();
+    return;
+  }
+
+  enemyTurn();
+
+  if (hp <= 0) {
+    hp = 0;
+    gameState = "lost";
+    setStatus("💀 你倒在地下城中，請重新開始！", "lose");
+  }
+
+  render();
+}
+
+// 敵人回合：只有與玩家上下左右相鄰時才會造成傷害。
+// 斜對角不算碰到；敵人只是靠近或移動到旁邊時，不會在同一次移動中攻擊。
+function enemyTurn() {
+  for (const enemy of enemies) {
+    if (!enemy.alive || gameState !== "playing") continue;
+
+    const distanceToPlayer = () =>
+      Math.abs(player.x - enemy.x) + Math.abs(player.y - enemy.y);
+
+    // 一般敵人：上下左右相鄰時攻擊。
+    // 特殊右側敵人：靠近不會傷害，只有玩家實際走進它所在格才扣血。
+    if (distanceToPlayer() === 1) {
+      if (!enemy.contactOnly) {
+        hp--;
+        setStatus("💥 敵人碰到你並發動攻擊！生命值 -1。");
+        if (hp <= 0) return;
+      }
+      continue;
+    }
+
+    // 距離太遠就不追蹤。
+    if (distanceToPlayer() > 6) continue;
+
+    const options = [
+      { x: 0, y: -1 },
+      { x: 0, y: 1 },
+      { x: -1, y: 0 },
+      { x: 1, y: 0 }
+    ];
+
+    // 優先選擇能縮短與玩家距離的方向。
+    options.sort((a, b) => {
+      const da =
+        Math.abs(player.x - (enemy.x + a.x)) +
+        Math.abs(player.y - (enemy.y + a.y));
+      const db =
+        Math.abs(player.x - (enemy.x + b.x)) +
+        Math.abs(player.y - (enemy.y + b.y));
+      return da - db;
+    });
+
+    for (const step of options) {
+      const nx = enemy.x + step.x;
+      const ny = enemy.y + step.y;
+
+      // 敵人不能穿牆、互相重疊、走到玩家格或出口格。
+      if (isWall(nx, ny)) continue;
+      if (player.x === nx && player.y === ny) continue;
+      if (enemyAt(nx, ny)) continue;
+      if (nx === exit.x && ny === exit.y) continue;
+
+      enemy.x = nx;
+      enemy.y = ny;
+      // 這裡只移動、不扣血；若已相鄰，玩家下一次行動後才會攻擊。
+      break;
+    }
+  }
+}
+
+// 鍵盤控制：WASD、方向鍵、空白鍵。
+document.addEventListener("keydown", event => {
+  const keyName = event.key.toLowerCase();
+
+  const keyDirections = {
+    w: "up",
+    arrowup: "up",
+    s: "down",
+    arrowdown: "down",
+    a: "left",
+    arrowleft: "left",
+    d: "right",
+    arrowright: "right"
+  };
+
+  const direction = keyDirections[keyName];
+
+  if (direction) {
+    event.preventDefault();
+    move(direction);
+  } else if (keyName === " ") {
+    event.preventDefault();
+    waitTurn();
+  }
+});
+
+// 觸控與滑鼠方向按鈕。
+document.querySelectorAll("[data-dir]").forEach(button => {
+  button.addEventListener("click", () => {
+    move(button.dataset.dir);
+  });
+});
+
+// 重新開始遊戲。
+document.getElementById("restart").addEventListener(
+  "click", initializeGame
+);
+
+// 等待一回合。
+document.getElementById("wait").addEventListener(
+  "click", waitTurn
+);
+
+// 載入頁面時開始遊戲。
+initializeGame();
+</script>
+</body>
+</html>
